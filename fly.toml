@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for posthog-writer-agent on 2026-07-29T08:28:17-06:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'posthog-writer-agent'
+primary_region = 'iad'
+
+[build]
+[env]
+  PORT = '8000'
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = 'stop'
+  min_machines_running = 1
+  processes = ['app']
+
+  [http_service.concurrency]
+    type = 'requests'
+    soft_limit = 20
+    hard_limit = 25
+
+[[vm]]
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

@@ -146,6 +146,22 @@ Fly runs more than one machine behind a single app by default, with no guarantee
 
 ---
 
+## Limits
+
+This is a demo-scale deployment, not production infrastructure, and it's built to fail safely rather than to fail expensively. A few things worth knowing before pointing something serious at it:
+
+**No auth, no persistent storage.** `/mcp` is open — anyone with the URL can call it, by design, since the whole point is a one-line `claude mcp add`. `chroma_store/` isn't backed by a Fly volume, so it's rebuilt from `docs_cache/` on every fresh boot rather than persisted; the guardrails below share that same ephemeral tradeoff.
+
+**Per-IP rate limit.** Each client IP is capped at `RATE_LIMIT_REQUESTS` calls to `/mcp` per `RATE_LIMIT_WINDOW_SECONDS` (default: 10 per 60s). Past that, the server returns `429` until the window rolls over. This bounds how fast any single source can hit the server; it does nothing against many different IPs hitting it at once, which is what the Fly concurrency cap below is for.
+
+**Daily OpenAI budget.** Every tool call makes exactly one OpenAI embeddings call (`text-embedding-3-small`, capped at 300 input characters — there's no code path to a chat/completions call or a caller-chosen model). Total calls across all callers combined are capped at `DAILY_OPENAI_CALL_LIMIT` per day (default: 100). Past that, tools return a plain-language message explaining the server is at capacity instead of erroring out or silently failing. Because there's no persistent volume, this counter resets on restart/redeploy rather than holding a hard boundary across a full calendar day.
+
+**Fly concurrency cap.** `fly.toml` caps each machine at 20 concurrent in-flight requests (soft) / 25 (hard) before the proxy queues or rejects further ones, independent of the per-IP limit above — this is what catches a burst from many different IPs at once rather than one repeat caller.
+
+None of these are tuned for real production traffic; they're tuned to keep a demo project's blast radius, and its owner's OpenAI bill, small if the public URL ever gets hit harder than expected.
+
+---
+
 ## Example queries
 
 **Query:** "how does feature flag rollout percentage work"
