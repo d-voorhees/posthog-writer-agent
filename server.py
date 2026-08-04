@@ -175,6 +175,7 @@ async def landing_page(request: Request) -> HTMLResponse:
 async def health_check(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "server": "posthog_writer_mcp"})
 
+
 _openai_client: OpenAI | None = None
 _chroma_collection = None
 
