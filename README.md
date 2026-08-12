@@ -132,7 +132,7 @@ Serves over streamable HTTP on the port set by the `PORT` environment variable, 
 
 ### Deployment (Fly.io)
 
-The live server above runs on Fly.io, deployed the same way as [Bird by Bird](https://github.com/d-voorhees/bird-by-bird): free tier, with `min_machines_running = 1` to avoid cold starts. The `Dockerfile`, `fly.toml`, and `entrypoint.sh` in this repo are what run it.
+The live server above runs on Fly.io. The `Dockerfile`, `fly.toml`, and `entrypoint.sh` in this repo are what run it.
 
 ```bash
 fly launch --no-deploy   # review the generated config against fly.toml in this repo
@@ -140,7 +140,11 @@ fly secrets set OPENAI_API_KEY=your-key-here
 fly deploy
 ```
 
-No persistent Fly volume is attached. `entrypoint.sh` checks whether `chroma_store/` already exists and runs `ingest.py` on first boot if not, costing under a minute on a fresh deploy.
+No persistent Fly volume is attached. `entrypoint.sh` checks whether `chroma_store/` already exists and runs `ingest.py` on first boot if not, costing under a minute on a fresh deploy — the same cost hits again on every cold start (see below).
+
+The machine runs on `shared-cpu-1x` with 256MB of memory. Measured RSS in production is around 140MB (no local embedding model is ever loaded; OpenAI's API does that work), so 256MB leaves comfortable headroom without paying for a 512MB machine it doesn't use.
+
+**Scale-to-zero (2026-08-12):** `fly.toml` sets `auto_stop_machines = "stop"`, `auto_start_machines = true`, and `min_machines_running = 0`. Fly stops the machine when nothing's hit it for a while and starts it back up on the next request, so this demo isn't paying to keep a machine running 24/7 for occasional traffic. The tradeoff: the first request after idle is slower than the rest, since it has to boot the machine and, because `chroma_store/` isn't on a persistent volume, re-run `ingest.py` against OpenAI before it can answer. For a documentation-lookup demo where being cheap to run matters more than shaving a few seconds off an occasional first call, that's the right trade. An earlier version of this deployment pinned `min_machines_running = 1` specifically to avoid that cold start; this reverses that choice in favor of lower cost.
 
 Fly runs more than one machine behind a single app by default, with no guaranteed session affinity between requests. FastMCP's HTTP transport tracks session state in memory per process by default, so a handshake landing on one machine followed by a tool call landing on another closes the connection. `server.py` sets `stateless_http=True` on the `FastMCP()` constructor to remove that dependency. The tradeoff: features that rely on a persistent session, resumable streaming connections across a reconnect, for instance, aren't available in this mode. For a documentation-lookup server where every tool call is independent, that cost is close to nothing; a server needing multi-turn state within a single client session would need a different fix, most likely session affinity configured at the load balancer instead.
 
